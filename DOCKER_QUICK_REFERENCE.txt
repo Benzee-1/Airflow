@@ -1,0 +1,328 @@
+================================================================================
+SOLUTION DOCKER PROMETHEUS - QUICK REFERENCE
+Architecture: 4 Airflow servers + 1 central Docker stack
+================================================================================
+
+STRUCTURE SIMPLE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────┐
+│ CENTRAL SERVER (Docker Compose)                             │
+│                                                             │
+│  Prometheus :9090   Grafana :3000   AlertManager :9093     │
+│                     Postfix :25 (email relay)              │
+│                                                             │
+│  Data: /data/prometheus (30 jours, 100GB)                 │
+└─────────────────────────────────────────────────────────────┘
+                         ▲
+              ┌──────────┼──────────┐
+              │          │          │
+     ┌────────┴──┐  ┌────┴──┐  ┌────┴──┐
+     │   STAGE   │  │  PROD  │  │WORKERS│
+     │           │  │        │  │(future)
+     └─────┬─────┘  └────┬───┘  └───────┘
+           │             │
+    SIT1 (99), SIT2 (100) │  SIP1 (101), SIP2 (102)
+    Exporters :9100, :9187, :6379, :8888
+
+================================================================================
+DÉPLOIEMENT RAPIDE (60 minutes)
+================================================================================
+
+CENTRAL SERVER:
+  1. mkdir -p /opt/prometheus-stack && cd /opt/prometheus-stack
+  2. scp docker-compose.yml prometheus.yml alertmanager.yml .
+  3. docker-compose up -d
+  4. Vérifier: http://localhost:9090/targets
+
+AIRFLOW SERVERS (4×):
+  1. bash install_exporters_airflow.sh
+  2. Vérifier: curl http://localhost:9100/metrics
+
+GRAFANA:
+  1. http://localhost:3000 (admin/admin_change_me)
+  2. Change password
+  3. Import dashboards (IDs: 12632, 9628, 11835, 1860)
+
+================================================================================
+FICHIERS CLÉS
+================================================================================
+
+docker-compose.yml
+  └─ 4 services: prometheus, grafana, alertmanager, postfix
+     Volumes: prometheus-data, grafana-data, alertmanager-data
+
+prometheus_4servers.yml
+  └─ Configuration pour 4 serveurs Airflow
+     10 scrape jobs (airflow, postgresql, redis, celery, node × 2 env)
+     TSDB: 30 jours, 100GB
+
+alertmanager_postfix.yml
+  └─ Email notifications via postfix:25 (local)
+     Routes: critical-prod, critical-stage, warning, info
+
+install_exporters_airflow.sh
+  └─ Install sur chaque serveur Airflow:
+     Node Exporter, PostgreSQL, Redis, Celery exporters
+
+================================================================================
+URLS & PORTS
+================================================================================
+
+PROMETHEUS:  http://localhost:9090
+  ├─ Targets:    http://localhost:9090/targets
+  ├─ Alerts:     http://localhost:9090/alerts
+  └─ Graph:      http://localhost:9090/graph
+
+GRAFANA:     http://localhost:3000
+  └─ Datasources & Dashboards
+
+ALERTMANAGER: http://localhost:9093
+  └─ Alerts & Routes
+
+EXPORTERS (sur 4 serveurs Airflow):
+  ├─ Node:       :9100
+  ├─ PostgreSQL: :9187
+  ├─ Redis:      :6379
+  └─ Celery:     :8888
+
+================================================================================
+SERVEURS AIRFLOW - IPS & HOSTNAMES
+================================================================================
+
+STAGE:
+  SRAI-AIR-SIT1  10.240.129.99
+  SRAI-AIR-SIT2  10.240.129.100
+
+PRODUCTION:
+  SRAI-AIR-SIP1  10.240.129.101
+  SRAI-AIR-SIP2  10.240.129.102
+
+Chaque serveur exporte 5 sources (Node, Airflow, PostgreSQL, Redis, Celery)
+Total: 4 serveurs × 5 sources = 20 targets dans Prometheus
+
+================================================================================
+COMMANDES ESSENTIELLES
+================================================================================
+
+DÉMARRER/ARRÊTER:
+  docker-compose up -d        # Démarrer en background
+  docker-compose down         # Arrêter
+  docker-compose restart      # Redémarrer
+  docker-compose ps           # Status
+
+LOGS:
+  docker-compose logs -f              # Tous les logs
+  docker-compose logs -f prometheus   # Logs d'un service
+  docker-compose logs --tail 50 <svc> # 50 dernières lignes
+
+VÉRIFIER:
+  curl -s http://localhost:9090/-/healthy          # Prometheus
+  curl -s http://localhost:9093/-/healthy          # AlertManager
+  curl -s http://localhost:3000/api/health         # Grafana
+  docker-compose ps                                # Status des containers
+
+RECHARGER CONFIG (sans redémarrer):
+  curl -X POST http://localhost:9090/-/reload      # Prometheus
+  # AlertManager: docker-compose restart alertmanager
+
+EXÉCUTER COMMANDES DANS CONTAINER:
+  docker-compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
+  docker-compose exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml
+  docker-compose exec grafana grafana-cli admin reset-admin-password <pwd>
+
+================================================================================
+VÉRIFICATIONS SANTÉ
+================================================================================
+
+✓ Prometheus targets UP
+  http://localhost:9090/targets
+  Vérifier: 20/20 targets UP (4 servers × 5 exporters)
+
+✓ AlertManager working
+  docker-compose logs alertmanager | grep -i "listening\|started"
+
+✓ Postfix email relay
+  docker-compose logs postfix | grep -i "started\|listening"
+
+✓ Grafana datasource
+  Configuration → Data Sources → Prometheus → Test
+
+✓ Alertes reçues
+  Envoyer une alerte test, vérifier la réception de l'email
+
+================================================================================
+MÉTRIQUES COLLECTÉES
+================================================================================
+
+PAR SERVEUR:
+  Node Exporter       ~50 métriques (CPU, RAM, disque, réseau)
+  Airflow Metrics     ~20 métriques (DAGs, tasks, executors)
+  PostgreSQL          ~50 métriques (connexions, cache, queries)
+  Redis               ~30 métriques (mémoire, commands, clients)
+  Celery              ~20 métriques (tasks, workers, queues)
+
+TOTAL: ~170 métriques/serveur × 4 = ~680 métriques/min
+
+Rétention: 30 jours, 100GB max
+Rate: ~22 métriques/seconde
+
+================================================================================
+CONFIGURATION EMAIL (POSTFIX LOCAL)
+================================================================================
+
+Postfix dans docker-compose fourni déjà configuré:
+  - Écoute sur: localhost:25 (dans le réseau Docker)
+  - De: alertmanager@airflow.local
+  - Sans authentification (local relay)
+
+AlertManager envoie vers:
+  - PRODUCTION CRITICAL: airflow-oncall@company.com
+  - STAGE CRITICAL:      airflow-team@company.com
+  - WARNINGS:            airflow-team@company.com
+  - INFO:                airflow-team@company.com
+
+À MODIFIER dans alertmanager.yml:
+  Remplacer les adresses email par les vôtres
+
+================================================================================
+ALERTES PRINCIPALES (50+)
+================================================================================
+
+CRITICAL (Prod):
+  ✗ CeleryWorkerDown
+  ✗ PostgreSQLConnectionPoolExhausted
+  ✗ RedisMemorySaturation
+  ✗ LowDiskSpace
+  ✗ AirflowSchedulerNotHealthy
+
+WARNING:
+  ⚠ HighTaskFailureRate
+  ⚠ PostgreSQLSlowQueries
+  ⚠ HighCPUUsage
+  ⚠ HighMemoryUsage
+  ⚠ CeleryQueueBacklog
+
+INFO:
+  ℹ NodeRecentlyRebooted
+  ℹ DAGExecutionSlow
+
+================================================================================
+TROUBLESHOOTING RAPIDE
+================================================================================
+
+Les containers ne démarrent pas:
+  → docker-compose logs
+  → Vérifier les ports disponibles: netstat -tlnp
+  → Vérifier la syntaxe YAML: docker run --rm -v $(pwd):/w prom/prometheus:v2.52.0 promtool check config /w/prometheus.yml
+
+Targets DOWN dans Prometheus:
+  → Sur le serveur Airflow: curl http://localhost:9100/metrics
+  → Vérifier le service: systemctl status node_exporter
+  → Vérifier le port: netstat -tlnp | grep 9100
+
+Emails non reçus:
+  → docker-compose exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml
+  → docker-compose logs postfix
+  → Tester: curl -X POST http://localhost:9093/api/v1/alerts ...
+
+Grafana - Datasource not working:
+  → docker-compose exec grafana ping prometheus
+  → curl -s http://prometheus:9090/-/healthy
+
+================================================================================
+VOLUMES PERSISTANTS
+================================================================================
+
+Données sauvegardées automatiquement dans des volumes Docker:
+
+  prometheus-data
+    └─ /prometheus (TSDB)
+
+  grafana-data
+    └─ /var/lib/grafana (dashboards, datasources)
+
+  alertmanager-data
+    └─ /alertmanager (état des alertes)
+
+Ces volumes survivent aux redémarrages.
+
+Lister les volumes:
+  docker volume ls | grep prometheus
+
+Nettoyer (attention - supprime les données!):
+  docker volume rm prometheus-data grafana-data alertmanager-data
+
+================================================================================
+BACKUP MANUEL
+================================================================================
+
+Configurations:
+  tar czf backup-config-$(date +%Y%m%d).tar.gz \
+    prometheus.yml alertmanager.yml grafana-datasources.yml rules/
+
+Données Prometheus:
+  docker run --rm -v prometheus-data:/data -v $(pwd)/backups:/backup \
+    alpine tar czf /backup/prometheus-$(date +%Y%m%d).tar.gz -C /data .
+
+Données Grafana:
+  docker run --rm -v grafana-data:/data -v $(pwd)/backups:/backup \
+    alpine tar czf /backup/grafana-$(date +%Y%m%d).tar.gz -C /data .
+
+================================================================================
+SÉCURITÉ
+================================================================================
+
+À FAIRE IMMÉDIATEMENT:
+
+1. Changer le mot de passe Grafana
+   docker-compose exec grafana grafana-cli admin reset-admin-password <newpwd>
+
+2. Restreindre les ports (firewall)
+   ufw allow from 10.240.129.0/24 to any port 9090
+   ufw allow from 10.240.129.0/24 to any port 3000
+
+3. Adapter les emails AlertManager
+   Éditer alertmanager.yml avec vos adresses réelles
+
+4. HTTPS en production (ajouter reverse proxy nginx/traefik)
+
+================================================================================
+MAINTENANCE QUOTIDIENNE
+================================================================================
+
+Matin:
+  curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+  → Devrait afficher 20
+
+Vérifier les alertes:
+  curl -s http://localhost:9093/api/v1/alerts | jq '.data | length'
+
+Vérifier disque Prometheus:
+  docker exec prometheus du -sh /prometheus
+
+Lire les logs:
+  docker-compose logs --tail 100
+
+================================================================================
+CONTACT & SUPPORT
+================================================================================
+
+Email: airflow-team@company.com
+On-Call (Critical): airflow-oncall@company.com
+
+SLA:
+  - Uptime Prometheus: 99.9% (4.3h/mois max)
+  - Latence collecte: <5s par target
+
+================================================================================
+VERSION & STATUS
+================================================================================
+
+Version: 1.0
+Date: 2026-08-27
+Status: Production-Ready
+Architecture: Docker Compose + 4 Airflow servers
+Deployment time: ~60 minutes
+
+================================================================================
