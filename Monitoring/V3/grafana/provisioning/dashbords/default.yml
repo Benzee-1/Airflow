@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: Airflow Monitoring
+    orgId: 1
+    folder: Airflow 3
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
