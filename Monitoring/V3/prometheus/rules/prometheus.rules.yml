@@ -1,0 +1,72 @@
+groups:
+  - name: availability
+    rules:
+      - alert: ExporterDown
+        expr: up{job=~"node|postgres|redis|celery"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Exporter indisponible sur {{ $labels.instance }}"
+          description: "Le job {{ $labels.job }} ne répond plus depuis 5 minutes."
+      - alert: AirflowApiHealthProbeFailed
+        expr: probe_success{job="airflow-health"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Health check Airflow en échec sur {{ $labels.hostname }}"
+          description: "Le endpoint {{ $labels.instance }} ne retourne pas un succès HTTP."
+      - alert: AzureAgentDown
+        expr: azure_agent_service_active == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Agent Azure arrêté sur {{ $labels.instance }}"
+          description: "Le service Azure surveillé par textfile collector est inactif."
+  - name: linux
+    rules:
+      - alert: HostHighCpu
+        expr: 100 * (1 - avg by(instance,environment,hostname) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 90
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "CPU élevé sur {{ $labels.hostname }}", description: "CPU > 90% pendant 15 minutes."}
+      - alert: HostHighMemory
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 90
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Mémoire élevée sur {{ $labels.hostname }}", description: "Mémoire utilisée > 90%."}
+      - alert: HostFilesystemAlmostFull
+        expr: 100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) > 90
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "Filesystem presque plein sur {{ $labels.hostname }}", description: "{{ $labels.mountpoint }} dépasse 90%."}
+      - alert: NodeExporterTextfileScrapeError
+        expr: node_textfile_scrape_error == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Erreur textfile collector sur {{ $labels.hostname }}", description: "Un fichier .prom est illisible."}
+  - name: postgres
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "PostgreSQL indisponible sur {{ $labels.hostname }}", description: "postgres_exporter ne peut plus joindre PostgreSQL."}
+  - name: redis
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Redis indisponible sur {{ $labels.hostname }}", description: "redis_exporter ne peut plus joindre Redis."}
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.90 and redis_memory_max_bytes > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Mémoire Redis élevée sur {{ $labels.hostname }}", description: "Redis utilise plus de 90% de maxmemory."}
+  - name: monitoring-stack
+    rules:
+      - alert: PrometheusRuleEvaluationFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Échec d'évaluation de règles Prometheus", description: "Vérifier les expressions et les métriques disponibles."}
