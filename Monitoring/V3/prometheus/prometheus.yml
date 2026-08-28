@@ -1,0 +1,59 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    platform: airflow3-azure
+    monitoring_node: SRAI-AIR-SID1
+rule_files:
+  - /etc/prometheus/rules/*.yml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [alertmanager:9093]
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+        labels: {environment: monitoring, role: prometheus, hostname: SRAI-AIR-SID1}
+  - job_name: alertmanager
+    static_configs:
+      - targets: [alertmanager:9093]
+        labels: {environment: monitoring, role: alertmanager, hostname: SRAI-AIR-SID1}
+  - job_name: otel-collector
+    static_configs:
+      - targets: [otel-collector:8889]
+        labels: {environment: shared, role: airflow-metrics}
+  - job_name: cadvisor
+    static_configs:
+      - targets: [cadvisor:8080]
+        labels: {environment: monitoring, hostname: SRAI-AIR-SID1}
+  - job_name: node
+    file_sd_configs:
+      - files: [/etc/prometheus/file_sd/nodes-*.yml]
+        refresh_interval: 1m
+  - job_name: postgres
+    file_sd_configs:
+      - files: [/etc/prometheus/file_sd/postgres-*.yml]
+        refresh_interval: 1m
+  - job_name: redis
+    file_sd_configs:
+      - files: [/etc/prometheus/file_sd/redis-*.yml]
+        refresh_interval: 1m
+  - job_name: celery
+    file_sd_configs:
+      - files: [/etc/prometheus/file_sd/celery-*.yml]
+        refresh_interval: 1m
+  - job_name: airflow-health
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    file_sd_configs:
+      - files: [/etc/prometheus/file_sd/airflow-health-*.yml]
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
