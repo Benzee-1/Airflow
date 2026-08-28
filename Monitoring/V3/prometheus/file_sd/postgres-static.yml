@@ -1,0 +1,8 @@
+- targets: ['10.240.129.99:9187']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT1}
+- targets: ['10.240.129.100:9187']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT2}
+- targets: ['10.240.129.101:9187']
+  labels: {environment: production, hostname: SRAI-AIR-SIP1}
+- targets: ['10.240.129.102:9187']
+  labels: {environment: production, hostname: SRAI-AIR-SIP2}

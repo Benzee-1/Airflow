@@ -1,0 +1,10 @@
+- targets: ['10.240.129.104:9100']
+  labels: {environment: monitoring, hostname: SRAI-AIR-SID1, role: monitoring}
+- targets: ['10.240.129.99:9100']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT1, role: airflow-core}
+- targets: ['10.240.129.100:9100']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT2, role: airflow-core}
+- targets: ['10.240.129.101:9100']
+  labels: {environment: production, hostname: SRAI-AIR-SIP1, role: airflow-core}
+- targets: ['10.240.129.102:9100']
+  labels: {environment: production, hostname: SRAI-AIR-SIP2, role: airflow-core}

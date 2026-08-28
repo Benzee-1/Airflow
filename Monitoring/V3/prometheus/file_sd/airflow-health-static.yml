@@ -1,0 +1,9 @@
+# Adapter le chemin si votre Airflow API expose le health endpoint ailleurs.
+- targets: ['http://10.240.129.99:8080/api/v2/monitor/health']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT1, component: apiserver}
+- targets: ['http://10.240.129.100:8080/api/v2/monitor/health']
+  labels: {environment: stage, hostname: SRAI-AIR-SIT2, component: apiserver}
+- targets: ['http://10.240.129.101:8080/api/v2/monitor/health']
+  labels: {environment: production, hostname: SRAI-AIR-SIP1, component: apiserver}
+- targets: ['http://10.240.129.102:8080/api/v2/monitor/health']
+  labels: {environment: production, hostname: SRAI-AIR-SIP2, component: apiserver}

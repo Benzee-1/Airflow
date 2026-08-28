@@ -1,0 +1,4 @@
+# Généré automatiquement. Ajouter les workers sous forme de groupes.
+# - targets: ['10.240.130.10:9808', '10.240.130.11:9808']
+#   labels: {environment: production, role: celery-worker}
+[]
