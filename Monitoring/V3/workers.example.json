@@ -1,0 +1,4 @@
+[
+  {"ip":"10.240.130.10","hostname":"SRAI-AIR-WP01","environment":"production"},
+  {"ip":"10.240.131.10","hostname":"SRAI-AIR-WT01","environment":"stage"}
+]
